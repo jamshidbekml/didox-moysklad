@@ -125,8 +125,11 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
     background: var(--bg);
   }
   .container { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 8px; }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .header h1 { font-size: 20px; margin: 0 0 8px; }
   p.lead { color: var(--muted); margin: 0 0 24px; }
+  .nav-link { color: var(--accent); text-decoration: none; font-size: 13px; white-space: nowrap; }
+  .nav-link:hover { text-decoration: underline; }
   .card {
     background: #fff;
     border: 1px solid var(--border);
@@ -164,7 +167,10 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
 </head>
 <body>
 <div class="container">
-  <h1>${t('Интеграция с Didox', 'Didox Integration')}</h1>
+  <div class="header">
+    <h1>${t('Интеграция с Didox', 'Didox Integration')}</h1>
+    <a id="docsLink" class="nav-link" href="#" style="display:none;">${t('Документы →', 'Documents →')}</a>
+  </div>
   <p class="lead">${t(
     'Настройте подключение к Didox для отправки документов из МоегоСклада.',
     'Configure your Didox connection to send documents from MoySklad.'
@@ -240,12 +246,14 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
       }
       hasSettings = Boolean(data.hasSettings);
 
+      const docsUrl = '/settings/documents'
+        + '?contextKey=' + encodeURIComponent(CONTEXT_KEY)
+        + '&userLocale=' + encodeURIComponent(USER_LOCALE);
+
       // If configured and not explicitly editing, skip the form and go to the
       // documents list — this is the typical "open the app" path.
       if (hasSettings && !EDIT_MODE) {
-        window.location.href = '/settings/documents'
-          + '?contextKey=' + encodeURIComponent(CONTEXT_KEY)
-          + '&userLocale=' + encodeURIComponent(USER_LOCALE);
+        window.location.href = docsUrl;
         return;
       }
 
@@ -256,6 +264,10 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
         passwordEl.placeholder = ${JSON.stringify(
           t('Оставьте пустым, чтобы не менять', 'Leave empty to keep current')
         )};
+        // Edit mode: show the "Documents →" return link in the header.
+        const docsLink = document.getElementById('docsLink');
+        docsLink.href = docsUrl;
+        docsLink.style.display = 'inline';
       }
     })
     .catch(err => {
@@ -506,7 +518,7 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
   :root {
     --bg: #fafafa; --fg: #1f2328; --muted: #57606a;
     --border: #d0d7de; --accent: #1976d2; --accent-hover: #1565c0;
-    --error: #cf222e; --green: #1a7f37;
+    --error: #cf222e; --green: #1a7f37; --amber: #bf8700; --neutral: #6e7781;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; color: var(--fg); background: var(--bg); }
@@ -520,13 +532,33 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
   th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { background: #f6f8fa; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; }
   tr:last-child td { border-bottom: 0; }
-  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-  .status-dot.signed { background: var(--green); }
-  .status-dot.rejected { background: var(--error); }
-  .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; justify-content: flex-end; }
-  .pager button { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px; }
-  .pager button:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Status indicator: filled ring with a soft halo for visibility. */
+  .status-dot {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--neutral);
+    box-shadow: 0 0 0 2px rgba(110, 119, 129, 0.18);
+    vertical-align: middle;
+  }
+  .status-dot.signed   { background: var(--green); box-shadow: 0 0 0 2px rgba(26, 127, 55, 0.22); }
+  .status-dot.rejected { background: var(--error); box-shadow: 0 0 0 2px rgba(207, 34, 46, 0.22); }
+  .status-dot.pending  { background: var(--amber); box-shadow: 0 0 0 2px rgba(191, 135, 0, 0.25); }
+
+  /* Pager: limit selector + numbered pages */
+  .pager { display: flex; gap: 12px; align-items: center; margin-top: 12px; justify-content: space-between; flex-wrap: wrap; }
+  .pager .left, .pager .right { display: flex; gap: 8px; align-items: center; }
   .pager .count { color: var(--muted); }
+  .pager select { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-family: inherit; font-size: 13px; cursor: pointer; }
+  .pages { display: flex; gap: 4px; align-items: center; }
+  .page-btn {
+    background: #fff; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; min-width: 32px; text-align: center;
+    cursor: pointer; font-family: inherit; font-size: 13px; color: var(--fg);
+  }
+  .page-btn:hover:not(:disabled):not(.active) { background: #f6f8fa; }
+  .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: default; }
+  .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .page-ellipsis { padding: 6px 4px; color: var(--muted); }
+
   .empty, .loading, .error { padding: 24px; text-align: center; color: var(--muted); }
   .error { color: var(--error); }
   .sub { color: var(--muted); font-size: 12px; }
@@ -545,16 +577,26 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
   <div id="content"><div class="loading">${t('Загрузка...', 'Loading...')}</div></div>
 
   <div class="pager" id="pager" style="display:none;">
-    <span class="count" id="count"></span>
-    <button id="prevBtn">${t('Назад', 'Prev')}</button>
-    <button id="nextBtn">${t('Далее', 'Next')}</button>
+    <div class="left">
+      <span class="count" id="count"></span>
+      <label class="count" for="limitSel">${t('Показывать:', 'Per page:')}</label>
+      <select id="limitSel">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div class="right">
+      <div class="pages" id="pages"></div>
+    </div>
   </div>
 
 <script src="https://apps-api.moysklad.ru/js/ns/appstore/app/v1/moysklad-iframe-expand-3.js"></script>
 <script>
 (function() {
   const CONTEXT_KEY = ${JSON.stringify(contextKey)};
-  const LIMIT = 20;
+  let limit = 25;
   let page = 1;
   let owner = 1;
   let total = 0;
@@ -562,18 +604,60 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
   const contentEl = document.getElementById('content');
   const pagerEl = document.getElementById('pager');
   const countEl = document.getElementById('count');
-  const prevBtn = document.getElementById('prevBtn');
-  const nextBtn = document.getElementById('nextBtn');
+  const pagesEl = document.getElementById('pages');
+  const limitSel = document.getElementById('limitSel');
 
   function escape(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
   }
 
   function statusClass(s) {
-    // 1/4 commonly = signed; -1 = rejected. Anything else = neutral dot.
+    // 1/4 commonly = signed; -1/2 = rejected; 0 = pending/waiting. Anything else = neutral.
     if (s === 1 || s === 4) return 'signed';
     if (s === -1 || s === 2) return 'rejected';
+    if (s === 0 || s === 3) return 'pending';
     return '';
+  }
+
+  function renderPager() {
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    pagesEl.innerHTML = '';
+
+    function btn(label, targetPage, opts) {
+      opts = opts || {};
+      const b = document.createElement('button');
+      b.className = 'page-btn' + (opts.active ? ' active' : '');
+      b.textContent = label;
+      b.disabled = Boolean(opts.disabled) || opts.active;
+      if (!b.disabled) b.addEventListener('click', () => { page = targetPage; load(); });
+      return b;
+    }
+    function ellipsis() {
+      const span = document.createElement('span');
+      span.className = 'page-ellipsis';
+      span.textContent = '…';
+      return span;
+    }
+
+    pagesEl.appendChild(btn('«', 1, { disabled: page <= 1 }));
+    pagesEl.appendChild(btn('‹', page - 1, { disabled: page <= 1 }));
+
+    // Window of ±2 around current page, always include first and last.
+    const windowSize = 2;
+    const pageNums = new Set([1, totalPages]);
+    for (let p = page - windowSize; p <= page + windowSize; p++) {
+      if (p >= 1 && p <= totalPages) pageNums.add(p);
+    }
+    const sorted = Array.from(pageNums).sort((a, b) => a - b);
+    let prev = 0;
+    for (const p of sorted) {
+      if (p - prev > 1) pagesEl.appendChild(ellipsis());
+      pagesEl.appendChild(btn(String(p), p, { active: p === page }));
+      prev = p;
+    }
+
+    pagesEl.appendChild(btn('›', page + 1, { disabled: page >= totalPages }));
+    pagesEl.appendChild(btn('»', totalPages, { disabled: page >= totalPages }));
   }
 
   function render(data) {
@@ -584,8 +668,7 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
     if (docs.length === 0) {
       contentEl.innerHTML = '<div class="empty">' + ${JSON.stringify(t('Документы не найдены.', 'No documents found.'))} + '</div>';
       pagerEl.style.display = 'flex';
-      prevBtn.disabled = page <= 1;
-      nextBtn.disabled = true;
+      renderPager();
       return;
     }
 
@@ -621,8 +704,7 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
     html += '</tbody></table>';
     contentEl.innerHTML = html;
     pagerEl.style.display = 'flex';
-    prevBtn.disabled = page <= 1;
-    nextBtn.disabled = page * LIMIT >= total;
+    renderPager();
   }
 
   function load() {
@@ -631,7 +713,7 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
       + '?contextKey=' + encodeURIComponent(CONTEXT_KEY)
       + '&owner=' + owner
       + '&page=' + page
-      + '&limit=' + LIMIT;
+      + '&limit=' + limit;
     fetch(url)
       .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d)))
       .then(render)
@@ -653,8 +735,11 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
     });
   });
 
-  prevBtn.addEventListener('click', () => { if (page > 1) { page--; load(); } });
-  nextBtn.addEventListener('click', () => { if (page * LIMIT < total) { page++; load(); } });
+  limitSel.addEventListener('change', () => {
+    limit = parseInt(limitSel.value, 10) || 25;
+    page = 1;
+    load();
+  });
 
   load();
 
