@@ -15,7 +15,7 @@ function optional(name: string, defaultValue: string): string {
 }
 
 export const config = {
-  port: parseInt(optional('PORT', '3000'), 10),
+  port: parseInt(optional('PORT', '8085'), 10),
   nodeEnv: optional('NODE_ENV', 'development'),
   logLevel: optional('LOG_LEVEL', 'info'),
 
