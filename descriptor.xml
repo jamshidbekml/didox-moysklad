@@ -17,7 +17,7 @@
 
   <iframes>
     <iframe type="main"
-            sourceUrl="https://your-server.example.com/settings/iframe">
+            sourceUrl="https://test-domain.uzpos.uz/settings/iframe">
       <uses>
         <standard-dialogs/>
       </uses>
@@ -25,7 +25,7 @@
   </iframes>
 
   <vendorApi>
-    <endpointBase>https://your-server.example.com</endpointBase>
+    <endpointBase>https://test-domain.uzpos.uz</endpointBase>
   </vendorApi>
 
   <access>
