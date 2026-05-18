@@ -4,6 +4,7 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { vendorRouter } from './routes/vendor';
 import { settingsRouter } from './routes/settings';
+import { connectDatabase } from './services/db';
 
 const app = express();
 
@@ -59,14 +60,23 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: 'internal_error' });
 });
 
-app.listen(config.port, () => {
-  logger.info(
-    {
-      port: config.port,
-      publicBaseUrl: config.publicBaseUrl,
-      appUid: config.moysklad.appUid,
-      appId: config.moysklad.appId,
-    },
-    'Server started'
-  );
+async function start(): Promise<void> {
+  await connectDatabase();
+
+  app.listen(config.port, () => {
+    logger.info(
+      {
+        port: config.port,
+        publicBaseUrl: config.publicBaseUrl,
+        appUid: config.moysklad.appUid,
+        appId: config.moysklad.appId,
+      },
+      'Server started'
+    );
+  });
+}
+
+start().catch((err) => {
+  logger.error({ err }, 'Failed to start server');
+  process.exit(1);
 });

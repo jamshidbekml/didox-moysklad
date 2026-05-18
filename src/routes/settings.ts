@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { vendorApi } from '../services/moysklad';
 import { installationStore } from '../services/store';
+import { AccountSettings } from '../types/vendor';
 import { logger } from '../utils/logger';
 
 export const settingsRouter = Router();
@@ -107,20 +108,20 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
   <form id="form">
     <div class="card">
       <div class="field">
-        <label for="didoxLogin">${t('Логин Didox', 'Didox login')}</label>
-        <input id="didoxLogin" name="didoxLogin" type="text" autocomplete="off" />
+        <label for="didoxTin">${t('СТИР / ЖШШИР', 'TIN / PINFL')}</label>
+        <input id="didoxTin" name="didoxTin" type="text" inputmode="numeric" pattern="[0-9]{9}|[0-9]{14}" autocomplete="off" />
         <div class="help">${t(
-          'Имя пользователя или email вашего аккаунта Didox.',
-          'Username or email of your Didox account.'
+          'СТИР (9 цифр) для юр. лиц или ЖШШИР (14 цифр) для физ. лиц.',
+          'TIN (9 digits) for legal entities or PINFL (14 digits) for individuals.'
         )}</div>
       </div>
 
       <div class="field">
-        <label for="didoxToken">${t('API-токен Didox', 'Didox API token')}</label>
-        <input id="didoxToken" name="didoxToken" type="password" autocomplete="off" />
+        <label for="didoxPassword">${t('Пароль Didox', 'Didox password')}</label>
+        <input id="didoxPassword" name="didoxPassword" type="password" autocomplete="new-password" />
         <div class="help">${t(
-          'Токен хранится на сервере интеграции. Заполняйте только для смены значения.',
-          'Token is stored on the integration server. Fill only when changing.'
+          'Пароль хранится на сервере интеграции. Оставьте пустым, чтобы не менять.',
+          'Password is stored on the integration server. Leave empty to keep current.'
         )}</div>
       </div>
 
@@ -161,7 +162,8 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
         userEl.textContent = ${JSON.stringify(t('Вы вошли как: ', 'Signed in as: '))} + data.user.name;
       }
       const s = data.settings || {};
-      if (s.didoxLogin) document.getElementById('didoxLogin').value = s.didoxLogin;
+      if (s.didoxTin) document.getElementById('didoxTin').value = s.didoxTin;
+      if (s.didoxPasswordHint) document.getElementById('didoxPassword').placeholder = s.didoxPasswordHint;
       if (s.autoSendDemand) document.getElementById('autoSendDemand').checked = true;
     })
     .catch(err => {
@@ -179,8 +181,8 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
 
     const payload = {
       contextKey: CONTEXT_KEY,
-      didoxLogin: document.getElementById('didoxLogin').value.trim(),
-      didoxToken: document.getElementById('didoxToken').value, // server treats empty as "no change"
+      didoxTin: document.getElementById('didoxTin').value.trim(),
+      didoxPassword: document.getElementById('didoxPassword').value, // server treats empty as "no change"
       autoSendDemand: document.getElementById('autoSendDemand').checked
     };
 
@@ -192,7 +194,7 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
     .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d)))
     .then(() => {
       showStatus('success', ${JSON.stringify(t('Настройки сохранены.', 'Settings saved.'))});
-      document.getElementById('didoxToken').value = '';
+      document.getElementById('didoxPassword').value = '';
     })
     .catch(err => {
       console.error('Save failed', err);
@@ -246,10 +248,13 @@ settingsRouter.get('/bootstrap', async (req: Request, res: Response) => {
       return;
     }
 
-    const install = installationStore.get(user.accountId);
+    const install = await installationStore.get(user.accountId);
+    // Never leak the decrypted Didox password to the browser — only the hint.
+    const { didoxPassword: _omit, ...safeSettings } = install?.settings ?? {};
+    void _omit;
     res.json({
       user: { name: user.fullName || user.name || '' },
-      settings: install?.settings ?? {},
+      settings: safeSettings,
     });
   } catch (err) {
     logger.error({ err }, 'Bootstrap: getUserContext failed');
@@ -267,13 +272,13 @@ settingsRouter.get('/bootstrap', async (req: Request, res: Response) => {
 settingsRouter.post('/save', async (req: Request, res: Response) => {
   const {
     contextKey,
-    didoxLogin,
-    didoxToken,
+    didoxPassword,
+    didoxTin,
     autoSendDemand,
   } = req.body as {
     contextKey?: string;
-    didoxLogin?: string;
-    didoxToken?: string;
+    didoxPassword?: string;
+    didoxTin?: string;
     autoSendDemand?: boolean;
   };
 
@@ -305,35 +310,41 @@ settingsRouter.post('/save', async (req: Request, res: Response) => {
     return;
   }
 
-  const install = installationStore.get(accountId);
+  const install = await installationStore.get(accountId);
   if (!install) {
     res.status(404).json({ error: 'installation_not_found' });
     return;
   }
 
   // Validate basic inputs
-  if (didoxLogin !== undefined && didoxLogin.length > 256) {
-    res.status(400).json({ error: 'didoxLogin too long' });
+  if (didoxTin && !/^(\d{9}|\d{14})$/.test(didoxTin)) {
+    res.status(400).json({ error: 'didoxTin must be 9 (СТИР) or 14 (ЖШШИР) digits' });
     return;
   }
 
-  // Persist settings (empty token means "do not change")
-  const patch: Record<string, unknown> = {
-    didoxLogin: didoxLogin || install.settings?.didoxLogin,
+  const nextTin = didoxTin || install.settings?.didoxTin;
+  const nextPasswordHint = didoxPassword
+    ? '****' + didoxPassword.slice(-4)
+    : install.settings?.didoxPasswordHint;
+
+  // Persist settings (empty password means "do not change").
+  // The store encrypts didoxPassword at rest; we keep a short hint in plaintext for UI.
+  const patch: Partial<AccountSettings> = {
+    didoxTin: nextTin,
     autoSendDemand: Boolean(autoSendDemand),
-    configured: Boolean(didoxLogin && (didoxToken || install.settings?.didoxTokenHint)),
+    configured: Boolean(nextTin && nextPasswordHint),
   };
-  if (didoxToken) {
-    // In production, store the real token in a secrets manager and keep only a hint here.
-    patch.didoxTokenHint = '****' + didoxToken.slice(-4);
+  if (didoxPassword) {
+    patch.didoxPassword = didoxPassword;
+    patch.didoxPasswordHint = nextPasswordHint;
   }
-  installationStore.updateSettings(accountId, patch);
+  await installationStore.updateSettings(accountId, patch);
 
   // If we were in SettingsRequired, flip to Activated.
   if (install.status === 'SettingsRequired' && patch.configured) {
     try {
       await vendorApi.updateStatus(accountId, 'Activated');
-      installationStore.upsert({
+      await installationStore.upsert({
         ...install,
         status: 'Activated',
         updatedAt: new Date().toISOString(),

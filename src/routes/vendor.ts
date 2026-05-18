@@ -59,7 +59,7 @@ vendorRouter.put(
     const preserveExistingToken =
       body.cause === 'TariffChanged' || body.cause === 'Autoprolongation';
 
-    const existing = installationStore.get(accountId);
+    const existing = await installationStore.get(accountId);
     const tokenToStore = preserveExistingToken
       ? accessToken ?? existing?.accessToken
       : accessToken;
@@ -81,7 +81,7 @@ vendorRouter.put(
       status = 'SettingsRequired';
     }
 
-    installationStore.upsert({
+    await installationStore.upsert({
       accountId,
       appUid: body.appUid,
       accountName: body.accountName,
@@ -125,13 +125,13 @@ vendorRouter.delete(
       'Deactivation request received'
     );
 
-    const existing = installationStore.get(accountId);
+    const existing = await installationStore.get(accountId);
     if (!existing) {
       res.status(204).end();
       return;
     }
 
-    installationStore.markDeactivated(accountId);
+    await installationStore.markDeactivated(accountId);
     res.status(200).end();
   }
 );
@@ -144,7 +144,7 @@ vendorRouter.get(
   '/apps/:appId/:accountId',
   async (req: Request, res: Response) => {
     const { accountId } = req.params;
-    const install = installationStore.get(accountId);
+    const install = await installationStore.get(accountId);
 
     if (!install || install.status === 'Deactivated') {
       res.status(404).end();

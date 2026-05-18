@@ -1,86 +1,179 @@
-import { AccountInstallation, AccountSettings } from '../types/vendor';
+import { AccountInstallation, AccountSettings, Subscription } from '../types/vendor';
 import { logger } from '../utils/logger';
+import { UserModel } from '../models/user';
+import { decrypt, encrypt, EncryptedField, isEncryptedField } from '../utils/crypto';
 
 /**
- * In-memory store for MVP.
+ * MongoDB-backed installation store.
  *
- * PRODUCTION: replace with a real database (Postgres recommended).
- * Schema sketch:
- *   accountId UUID PK
- *   app_uid TEXT
- *   account_name TEXT
- *   status TEXT
- *   access_token TEXT  (encrypt at rest)
- *   subscription_json JSONB
- *   settings_json JSONB
- *   installed_at TIMESTAMPTZ
- *   updated_at TIMESTAMPTZ
+ * Encryption at rest:
+ *   - accessToken (MoySklad)
+ *   - settings.didoxPassword (Didox account password)
+ * Both are AES-256-GCM via ENCRYPTION_KEY. The repo decrypts on read so
+ * callers always see plaintext.
  *
- * Notes:
- *   - access_token should be encrypted with a KMS-backed key
- *   - settings_json may contain Didox credentials - same treatment
- *   - keep retention after Uninstall for at least 30 days so re-installs preserve settings
+ * Retention: marking an installation Deactivated keeps the row so a re-install
+ * can preserve settings. Sensitive fields are cleared on deactivation.
  */
-export class InstallationStore {
-  private map = new Map<string, AccountInstallation>();
 
-  get(accountId: string): AccountInstallation | undefined {
-    return this.map.get(accountId);
+interface StoredSubscription {
+  tariffId: string;
+  trial: boolean;
+  tariffName?: string | null;
+  expiryMoment?: string | null;
+  notForResale: boolean;
+  partner: boolean;
+}
+
+interface StoredSettings {
+  didoxTin?: string | null;
+  didoxPassword?: EncryptedField | null;
+  didoxPasswordHint?: string | null;
+  autoSendDemand?: boolean | null;
+  configured?: boolean | null;
+}
+
+interface StoredUser {
+  accountId: string;
+  appUid: string;
+  accountName: string;
+  status: AccountInstallation['status'];
+  accessToken?: EncryptedField | null;
+  subscription?: StoredSubscription | null;
+  settings?: StoredSettings | null;
+  installedAt: Date;
+  updatedAt?: Date;
+}
+
+function toSubscription(s: StoredSubscription | null | undefined): Subscription | undefined {
+  if (!s) return undefined;
+  return {
+    tariffId: s.tariffId,
+    trial: s.trial,
+    tariffName: s.tariffName ?? undefined,
+    expiryMoment: s.expiryMoment ?? undefined,
+    notForResale: s.notForResale,
+    partner: s.partner,
+  };
+}
+
+function toSettings(s: StoredSettings | null | undefined): AccountSettings | undefined {
+  if (!s) return undefined;
+  return {
+    didoxTin: s.didoxTin ?? undefined,
+    didoxPasswordHint: s.didoxPasswordHint ?? undefined,
+    autoSendDemand: s.autoSendDemand ?? undefined,
+    configured: s.configured ?? undefined,
+    didoxPassword: isEncryptedField(s.didoxPassword) ? decrypt(s.didoxPassword) : undefined,
+  };
+}
+
+function toInstallation(doc: StoredUser): AccountInstallation {
+  return {
+    accountId: doc.accountId,
+    appUid: doc.appUid,
+    accountName: doc.accountName,
+    status: doc.status,
+    accessToken: isEncryptedField(doc.accessToken) ? decrypt(doc.accessToken) : undefined,
+    subscription: toSubscription(doc.subscription),
+    settings: toSettings(doc.settings),
+    installedAt: doc.installedAt.toISOString(),
+    updatedAt: (doc.updatedAt ?? new Date()).toISOString(),
+  };
+}
+
+export class InstallationStore {
+  async get(accountId: string): Promise<AccountInstallation | undefined> {
+    const doc = await UserModel.findOne({ accountId }).lean<StoredUser | null>();
+    return doc ? toInstallation(doc) : undefined;
   }
 
-  upsert(install: AccountInstallation): AccountInstallation {
-    const existing = this.map.get(install.accountId);
-    const merged: AccountInstallation = {
-      ...existing,
-      ...install,
-      settings: { ...existing?.settings, ...install.settings },
-      updatedAt: new Date().toISOString(),
+  async upsert(install: AccountInstallation): Promise<AccountInstallation> {
+    const set: Record<string, unknown> = {
+      appUid: install.appUid,
+      accountName: install.accountName,
+      status: install.status,
+      subscription: install.subscription,
     };
-    this.map.set(install.accountId, merged);
+
+    if (install.accessToken !== undefined) {
+      set.accessToken = encrypt(install.accessToken);
+    }
+
+    if (install.settings) {
+      const { didoxPassword, ...rest } = install.settings;
+      const settingsToStore: Record<string, unknown> = { ...rest };
+      if (didoxPassword !== undefined) {
+        settingsToStore.didoxPassword = encrypt(didoxPassword);
+      }
+      set.settings = settingsToStore;
+    }
+
+    const doc = await UserModel.findOneAndUpdate(
+      { accountId: install.accountId },
+      {
+        $set: set,
+        $setOnInsert: {
+          accountId: install.accountId,
+          installedAt: new Date(install.installedAt),
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean<StoredUser>();
+
     logger.info(
       {
-        accountId: merged.accountId,
-        status: merged.status,
-        accountName: merged.accountName,
+        accountId: doc.accountId,
+        status: doc.status,
+        accountName: doc.accountName,
       },
       'Installation upserted'
     );
-    return merged;
+    return toInstallation(doc);
   }
 
-  markDeactivated(accountId: string): void {
-    const existing = this.map.get(accountId);
-    if (!existing) {
+  async markDeactivated(accountId: string): Promise<void> {
+    const result = await UserModel.updateOne(
+      { accountId },
+      { $set: { status: 'Deactivated' }, $unset: { accessToken: '' } }
+    );
+    if (result.matchedCount === 0) {
       return;
     }
-    this.map.set(accountId, {
-      ...existing,
-      status: 'Deactivated',
-      accessToken: undefined,
-      updatedAt: new Date().toISOString(),
-    });
     logger.info({ accountId }, 'Installation marked Deactivated');
   }
 
-  updateSettings(
+  async updateSettings(
     accountId: string,
     patch: Partial<AccountSettings>
-  ): AccountInstallation | undefined {
-    const existing = this.map.get(accountId);
-    if (!existing) {
-      return undefined;
+  ): Promise<AccountInstallation | undefined> {
+    const set: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === 'didoxPassword') {
+        if (typeof value === 'string') {
+          set['settings.didoxPassword'] = encrypt(value);
+        }
+        continue;
+      }
+      set[`settings.${key}`] = value;
     }
-    const updated: AccountInstallation = {
-      ...existing,
-      settings: { ...existing.settings, ...patch },
-      updatedAt: new Date().toISOString(),
-    };
-    this.map.set(accountId, updated);
-    return updated;
+
+    if (Object.keys(set).length === 0) {
+      const doc = await UserModel.findOne({ accountId }).lean<StoredUser | null>();
+      return doc ? toInstallation(doc) : undefined;
+    }
+
+    const doc = await UserModel.findOneAndUpdate(
+      { accountId },
+      { $set: set },
+      { new: true }
+    ).lean<StoredUser | null>();
+    return doc ? toInstallation(doc) : undefined;
   }
 
-  list(): AccountInstallation[] {
-    return Array.from(this.map.values());
+  async list(): Promise<AccountInstallation[]> {
+    const docs = await UserModel.find().lean<StoredUser[]>();
+    return docs.map(toInstallation);
   }
 }
 

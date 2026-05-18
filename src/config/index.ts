@@ -38,6 +38,13 @@ export const config = {
   jwt: {
     lifetimeSeconds: parseInt(optional('JWT_LIFETIME_SECONDS', '60'), 10),
   },
+
+  db: {
+    url: required('DATABASE_URL'),
+    name: required('DATABASE_NAME'),
+  },
+
+  encryptionKey: required('ENCRYPTION_KEY'),
 } as const;
 
 export type AppConfig = typeof config;
