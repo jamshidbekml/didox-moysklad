@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MoySklad solution descriptor for the Didox integration MVP.
+  Paste this into the descriptor field in Личный кабинет разработчика.
+
+  Replace https://your-server.example.com with your real public HTTPS URL.
+  It must match PUBLIC_BASE_URL in your .env file.
+
+  Permissions reflect what a Didox EDI plugin minimally needs to read documents
+  and counterparties to build outgoing invoices. Tighten or expand as you build
+  out features.
+-->
+<ServerApplication xmlns="https://apps-api.moysklad.ru/xml/ns/appstore/app/v2"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="https://apps-api.moysklad.ru/xml/ns/appstore/app/v2
+                                       https://apps-api.moysklad.ru/xml/ns/appstore/app/v2/application-v2.xsd">
+
+  <iframes>
+    <iframe type="main"
+            sourceUrl="https://your-server.example.com/settings/iframe">
+      <uses>
+        <standard-dialogs/>
+      </uses>
+    </iframe>
+  </iframes>
+
+  <vendorApi>
+    <endpointBase>https://your-server.example.com</endpointBase>
+  </vendorApi>
+
+  <access>
+    <resource>https://api.moysklad.ru/api/remap/1.2</resource>
+    <scope>custom</scope>
+    <permissions>
+      <!-- Read counterparties (Didox needs INN/PINFL/OKED for the buyer) -->
+      <company>
+        <view/>
+      </company>
+
+      <!-- Read products and services for IKPU codes (mod__tasnif__uz.ikpu) -->
+      <good>
+        <view/>
+      </good>
+
+      <!-- The documents we typically send to Didox -->
+      <demand>
+        <view/>
+      </demand>
+      <supply>
+        <view/>
+      </supply>
+      <invoiceOut>
+        <view/>
+      </invoiceOut>
+
+      <!-- Read own organization (for seller-side INN/OKED) -->
+      <myCompany>
+        <view/>
+      </myCompany>
+
+      <!-- Webhooks: create our own to listen for new/updated documents -->
+      <useOwnWebhooks/>
+
+      <!-- Custom attributes: we'll create our own for storing Didox status/ID -->
+      <useOwnAttributeMetadata/>
+    </permissions>
+  </access>
+
+</ServerApplication>
