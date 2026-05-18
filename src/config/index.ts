@@ -45,6 +45,11 @@ export const config = {
   },
 
   encryptionKey: required('ENCRYPTION_KEY'),
+
+  didox: {
+    baseUrl: optional('DIDOX_BASE_URL', 'https://api-partners.didox.uz/'),
+    partnerToken: required('DIDOX_PARTNER_TOKEN'),
+  },
 } as const;
 
 export type AppConfig = typeof config;
