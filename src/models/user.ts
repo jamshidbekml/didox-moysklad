@@ -29,7 +29,6 @@ const settingsSchema = new Schema(
   {
     didoxTin: String,
     didoxPassword: encryptedFieldSchema, // ENCRYPTED at rest
-    didoxPasswordHint: String,
     autoSendDemand: { type: Boolean, default: false },
     configured: { type: Boolean, default: false },
   },

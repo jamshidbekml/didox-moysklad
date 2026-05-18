@@ -28,7 +28,6 @@ interface StoredSubscription {
 interface StoredSettings {
   didoxTin?: string | null;
   didoxPassword?: EncryptedField | null;
-  didoxPasswordHint?: string | null;
   autoSendDemand?: boolean | null;
   configured?: boolean | null;
 }
@@ -61,7 +60,6 @@ function toSettings(s: StoredSettings | null | undefined): AccountSettings | und
   if (!s) return undefined;
   return {
     didoxTin: s.didoxTin ?? undefined,
-    didoxPasswordHint: s.didoxPasswordHint ?? undefined,
     autoSendDemand: s.autoSendDemand ?? undefined,
     configured: s.configured ?? undefined,
     didoxPassword: isEncryptedField(s.didoxPassword) ? decrypt(s.didoxPassword) : undefined,

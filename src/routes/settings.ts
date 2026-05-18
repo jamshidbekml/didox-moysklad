@@ -1,8 +1,41 @@
 import { Router, Request, Response } from 'express';
+import { config } from '../config';
 import { vendorApi } from '../services/moysklad';
 import { installationStore } from '../services/store';
 import { AccountSettings } from '../types/vendor';
 import { logger } from '../utils/logger';
+
+const TIN_RE = /^(\d{9}|\d{14})$/;
+
+/**
+ * Resolve a MoySklad contextKey to an accountId + display name.
+ * Returns null and writes the appropriate HTTP error if resolution fails.
+ */
+async function resolveAccount(
+  contextKey: string | undefined,
+  res: Response
+): Promise<{ accountId: string; userName: string } | null> {
+  if (!contextKey) {
+    res.status(400).json({ error: 'missing_context_key' });
+    return null;
+  }
+  try {
+    const user = (await vendorApi.getUserContext(contextKey)) as {
+      accountId?: string;
+      name?: string;
+      fullName?: string;
+    };
+    if (!user.accountId) {
+      res.status(401).json({ error: 'invalid_context' });
+      return null;
+    }
+    return { accountId: user.accountId, userName: user.fullName || user.name || '' };
+  } catch (err) {
+    logger.error({ err }, 'getUserContext failed');
+    res.status(401).json({ error: 'context_resolution_failed' });
+    return null;
+  }
+}
 
 export const settingsRouter = Router();
 
@@ -148,6 +181,10 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
   const userEl = document.getElementById('user');
   const form = document.getElementById('form');
   const saveBtn = document.getElementById('saveBtn');
+  const passwordEl = document.getElementById('didoxPassword');
+
+  // Picks /create on first save, /update afterwards.
+  let hasSettings = false;
 
   function showStatus(kind, message) {
     statusEl.className = 'status ' + kind;
@@ -161,10 +198,15 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
       if (data.user && data.user.name) {
         userEl.textContent = ${JSON.stringify(t('Вы вошли как: ', 'Signed in as: '))} + data.user.name;
       }
+      hasSettings = Boolean(data.hasSettings);
       const s = data.settings || {};
       if (s.didoxTin) document.getElementById('didoxTin').value = s.didoxTin;
-      if (s.didoxPasswordHint) document.getElementById('didoxPassword').placeholder = s.didoxPasswordHint;
       if (s.autoSendDemand) document.getElementById('autoSendDemand').checked = true;
+      if (hasSettings) {
+        passwordEl.placeholder = ${JSON.stringify(
+          t('Оставьте пустым, чтобы не менять', 'Leave empty to keep current')
+        )};
+      }
     })
     .catch(err => {
       console.error('Bootstrap failed', err);
@@ -182,11 +224,13 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
     const payload = {
       contextKey: CONTEXT_KEY,
       didoxTin: document.getElementById('didoxTin').value.trim(),
-      didoxPassword: document.getElementById('didoxPassword').value, // server treats empty as "no change"
+      didoxPassword: passwordEl.value, // /update treats empty as "no change"; /create requires it
       autoSendDemand: document.getElementById('autoSendDemand').checked
     };
 
-    fetch('/settings/save', {
+    const endpoint = hasSettings ? '/settings/update' : '/settings/create';
+
+    fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -194,7 +238,11 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
     .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d)))
     .then(() => {
       showStatus('success', ${JSON.stringify(t('Настройки сохранены.', 'Settings saved.'))});
-      document.getElementById('didoxPassword').value = '';
+      passwordEl.value = '';
+      hasSettings = true;
+      passwordEl.placeholder = ${JSON.stringify(
+        t('Оставьте пустым, чтобы не менять', 'Leave empty to keep current')
+      )};
     })
     .catch(err => {
       console.error('Save failed', err);
@@ -229,132 +277,130 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
  * to MoySklad. We re-validate it by exchanging it for a user context.
  */
 settingsRouter.get('/bootstrap', async (req: Request, res: Response) => {
-  const contextKey = String(req.query.contextKey ?? '');
-  if (!contextKey) {
-    res.status(400).json({ error: 'missing_context_key' });
-    return;
-  }
+  const resolved = await resolveAccount(String(req.query.contextKey ?? ''), res);
+  if (!resolved) return;
 
-  try {
-    const user = (await vendorApi.getUserContext(contextKey)) as {
-      accountId?: string;
-      name?: string;
-      fullName?: string;
-      permissions?: Record<string, unknown>;
-    };
-
-    if (!user.accountId) {
-      res.status(401).json({ error: 'invalid_context' });
-      return;
-    }
-
-    const install = await installationStore.get(user.accountId);
-    // Never leak the decrypted Didox password to the browser — only the hint.
-    const { didoxPassword: _omit, ...safeSettings } = install?.settings ?? {};
-    void _omit;
-    res.json({
-      user: { name: user.fullName || user.name || '' },
-      settings: safeSettings,
-    });
-  } catch (err) {
-    logger.error({ err }, 'Bootstrap: getUserContext failed');
-    res.status(401).json({ error: 'context_resolution_failed' });
-  }
+  const install = await installationStore.get(resolved.accountId);
+  // Never send the decrypted Didox password to the browser.
+  const { didoxPassword: _omit, ...safeSettings } = install?.settings ?? {};
+  void _omit;
+  res.json({
+    user: { name: resolved.userName },
+    settings: safeSettings,
+    hasSettings: Boolean(install?.settings?.configured),
+  });
 });
 
 /**
- * Save settings posted from the iframe.
- * Re-resolves contextKey server-side to identify the account.
+ * POST /settings/create
+ * First-time settings save. Both didoxTin and didoxPassword are required.
+ * Creates the installation row (with placeholder accountName) if it doesn't
+ * exist yet — covers the case where the iframe is opened before MoySklad's
+ * vendor activation webhook has fired.
  *
- * If the installation is in SettingsRequired status, transitions it to Activated
- * by calling MoySklad's PUT /apps/{appId}/{accountId}/status.
+ * Refuses (409) if settings are already configured — use /update instead.
  */
-settingsRouter.post('/save', async (req: Request, res: Response) => {
-  const {
-    contextKey,
-    didoxPassword,
-    didoxTin,
-    autoSendDemand,
-  } = req.body as {
+settingsRouter.post('/create', async (req: Request, res: Response) => {
+  const { contextKey, didoxTin, didoxPassword, autoSendDemand } = req.body as {
     contextKey?: string;
-    didoxPassword?: string;
     didoxTin?: string;
+    didoxPassword?: string;
     autoSendDemand?: boolean;
   };
 
-  if (!contextKey) {
-    res.status(400).json({ error: 'missing_context_key' });
-    return;
-  }
+  const resolved = await resolveAccount(contextKey, res);
+  if (!resolved) return;
+  const { accountId, userName } = resolved;
 
-  let accountId: string;
-  try {
-    const user = (await vendorApi.getUserContext(contextKey)) as {
-      accountId?: string;
-      permissions?: { admin?: { view?: string } };
-    };
-    if (!user.accountId) {
-      res.status(401).json({ error: 'invalid_context' });
-      return;
-    }
-    // Optional: enforce admin-only writes. Uncomment if you want strict checks.
-    // const isAdmin = user.permissions?.admin?.view === 'ALL';
-    // if (!isAdmin) {
-    //   res.status(403).json({ error: 'admin_required' });
-    //   return;
-    // }
-    accountId = user.accountId;
-  } catch (err) {
-    logger.error({ err }, 'Save: getUserContext failed');
-    res.status(401).json({ error: 'context_resolution_failed' });
-    return;
-  }
-
-  const install = await installationStore.get(accountId);
-  if (!install) {
-    res.status(404).json({ error: 'installation_not_found' });
-    return;
-  }
-
-  // Validate basic inputs
-  if (didoxTin && !/^(\d{9}|\d{14})$/.test(didoxTin)) {
+  if (!didoxTin || !TIN_RE.test(didoxTin)) {
     res.status(400).json({ error: 'didoxTin must be 9 (СТИР) or 14 (ЖШШИР) digits' });
     return;
   }
-
-  const nextTin = didoxTin || install.settings?.didoxTin;
-  const nextPasswordHint = didoxPassword
-    ? '****' + didoxPassword.slice(-4)
-    : install.settings?.didoxPasswordHint;
-
-  // Persist settings (empty password means "do not change").
-  // The store encrypts didoxPassword at rest; we keep a short hint in plaintext for UI.
-  const patch: Partial<AccountSettings> = {
-    didoxTin: nextTin,
-    autoSendDemand: Boolean(autoSendDemand),
-    configured: Boolean(nextTin && nextPasswordHint),
-  };
-  if (didoxPassword) {
-    patch.didoxPassword = didoxPassword;
-    patch.didoxPasswordHint = nextPasswordHint;
+  if (!didoxPassword) {
+    res.status(400).json({ error: 'didoxPassword is required' });
+    return;
   }
-  await installationStore.updateSettings(accountId, patch);
 
-  // If we were in SettingsRequired, flip to Activated.
-  if (install.status === 'SettingsRequired' && patch.configured) {
+  const existing = await installationStore.get(accountId);
+  if (existing?.settings?.configured) {
+    res.status(409).json({ error: 'settings_already_exist' });
+    return;
+  }
+
+  // Create installation row if missing (vendor activation hasn't fired yet),
+  // otherwise just attach settings to the existing row.
+  const baseInstall = existing ?? {
+    accountId,
+    appUid: config.moysklad.appUid,
+    accountName: userName,
+    status: 'Activated' as const,
+    installedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const settings: AccountSettings = {
+    didoxTin,
+    didoxPassword,
+    autoSendDemand: Boolean(autoSendDemand),
+    configured: true,
+  };
+
+  await installationStore.upsert({ ...baseInstall, settings });
+
+  // If MoySklad activation set status=SettingsRequired, flip to Activated now.
+  if (existing?.status === 'SettingsRequired') {
     try {
       await vendorApi.updateStatus(accountId, 'Activated');
       await installationStore.upsert({
-        ...install,
+        ...baseInstall,
         status: 'Activated',
+        settings,
         updatedAt: new Date().toISOString(),
       });
     } catch (err) {
       logger.error({ err, accountId }, 'Failed to transition to Activated');
-      // Don't fail the user save - the settings are saved locally.
-      // A retry can be added on next user action.
+      // Settings are already saved locally; not fatal for the user.
     }
   }
 
+  res.status(201).json({ ok: true });
+});
+
+/**
+ * POST /settings/update
+ * Update existing settings. All fields are optional; an empty password keeps
+ * the current value. Requires settings to already be configured (use /create
+ * for the first save).
+ */
+settingsRouter.post('/update', async (req: Request, res: Response) => {
+  const { contextKey, didoxTin, didoxPassword, autoSendDemand } = req.body as {
+    contextKey?: string;
+    didoxTin?: string;
+    didoxPassword?: string;
+    autoSendDemand?: boolean;
+  };
+
+  const resolved = await resolveAccount(contextKey, res);
+  if (!resolved) return;
+  const { accountId } = resolved;
+
+  if (didoxTin && !TIN_RE.test(didoxTin)) {
+    res.status(400).json({ error: 'didoxTin must be 9 (СТИР) or 14 (ЖШШИР) digits' });
+    return;
+  }
+
+  const existing = await installationStore.get(accountId);
+  if (!existing?.settings?.configured) {
+    res.status(404).json({ error: 'settings_not_found' });
+    return;
+  }
+
+  const patch: Partial<AccountSettings> = {
+    autoSendDemand: Boolean(autoSendDemand),
+  };
+  if (didoxTin) patch.didoxTin = didoxTin;
+  if (didoxPassword) patch.didoxPassword = didoxPassword;
+
+  await installationStore.updateSettings(accountId, patch);
   res.json({ ok: true });
 });

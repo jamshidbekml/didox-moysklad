@@ -82,7 +82,6 @@ export interface AccountInstallation {
 export interface AccountSettings {
   didoxTin?: string; // СТИР (9 digits, legal entity) / ЖШШИР (14 digits, individual)
   didoxPassword?: string; // plaintext password — decrypted in memory only, encrypted at rest
-  didoxPasswordHint?: string; // hint for Didox account password (e.g. "****1234")
   autoSendDemand?: boolean;
   configured?: boolean;
 }
