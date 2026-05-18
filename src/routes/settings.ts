@@ -213,6 +213,10 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
 <script>
 (function() {
   const CONTEXT_KEY = ${JSON.stringify(contextKey)};
+  const USER_LOCALE = ${JSON.stringify(userLocale)};
+  // ?edit=1 lets the user stay on the settings form even when settings exist
+  // (used by the "← Settings" back-link from the documents page).
+  const EDIT_MODE = new URLSearchParams(window.location.search).get('edit') === '1';
   const statusEl = document.getElementById('status');
   const userEl = document.getElementById('user');
   const form = document.getElementById('form');
@@ -235,6 +239,16 @@ settingsRouter.get('/iframe', (req: Request, res: Response) => {
         userEl.textContent = ${JSON.stringify(t('Вы вошли как: ', 'Signed in as: '))} + data.user.name;
       }
       hasSettings = Boolean(data.hasSettings);
+
+      // If configured and not explicitly editing, skip the form and go to the
+      // documents list — this is the typical "open the app" path.
+      if (hasSettings && !EDIT_MODE) {
+        window.location.href = '/settings/documents'
+          + '?contextKey=' + encodeURIComponent(CONTEXT_KEY)
+          + '&userLocale=' + encodeURIComponent(USER_LOCALE);
+        return;
+      }
+
       const s = data.settings || {};
       if (s.didoxTin) document.getElementById('didoxTin').value = s.didoxTin;
       if (s.autoSendDemand) document.getElementById('autoSendDemand').checked = true;
@@ -520,7 +534,7 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
 </head>
 <body>
   <div class="toolbar">
-    <a class="nav-link" href="/settings/iframe?contextKey=${encodeURIComponent(contextKey)}&userLocale=${encodeURIComponent(userLocale)}">${t('← Настройки', '← Settings')}</a>
+    <a class="nav-link" href="/settings/iframe?contextKey=${encodeURIComponent(contextKey)}&userLocale=${encodeURIComponent(userLocale)}&edit=1">${t('← Настройки', '← Settings')}</a>
   </div>
 
   <div class="tabs">
