@@ -67,11 +67,26 @@ export function renderDocumentView(params: {
   tfoot td { font-weight: 600; background: #f6f8fa; border-top: 1px solid var(--border); }
   .sub { color: var(--muted); font-size: 11px; }
 
-  .sig-list { display: grid; gap: 8px; }
-  .sig { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
-  .sig .who { font-weight: 600; }
-  .sig .when { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .sig .cancel-pill { display: inline-block; background: #ffebe9; color: var(--error); border-radius: 999px; padding: 2px 8px; font-size: 11px; margin-left: 6px; }
+  /* Signature cards — receipt-style boxes with a large color-coded state label. */
+  .sig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .sig-card {
+    background: #fff; border: 2px solid var(--border); border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; min-height: 180px;
+  }
+  .sig-card[data-state="confirmed"] { border-color: #a1b900; }
+  .sig-card[data-state="cancel"]    { border-color: var(--error); }
+  .sig-card .sig-header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+  .sig-card .sig-state {
+    flex-grow: 1; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 24px 0;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .sig-card[data-state="confirmed"] .sig-state { color: #a1b900; }
+  .sig-card[data-state="cancel"]    .sig-state { color: var(--error); }
+  .sig-card .sig-footer { font-size: 12px; line-height: 1.5; }
+  .sig-card .sig-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; color: var(--fg); }
+  .sig-card .sig-operator, .sig-card .sig-ip { color: var(--muted); }
 
   .loading, .error { padding: 24px; text-align: center; color: var(--muted); }
   .error { color: var(--error); }
@@ -132,7 +147,10 @@ export function renderDocumentView(params: {
     gross:         ${JSON.stringify(t('Итого', 'Total'))},
     total:         ${JSON.stringify(t('Итого:', 'Total:'))},
     signatures:    ${JSON.stringify(t('Подписи', 'Signatures'))},
-    cancel:        ${JSON.stringify(t('Отмена', 'Cancel'))},
+    sigSent:       ${JSON.stringify(t('Отправлено', 'Sent'))},
+    sigConfirmed:  ${JSON.stringify(t('Подтверждён', 'Confirmed'))},
+    sigCancel:     ${JSON.stringify(t('Отменён', 'Cancelled'))},
+    operator:      ${JSON.stringify(t('Оператор', 'Operator'))},
     notSigned:     ${JSON.stringify(t('Документ ещё не подписан.', 'Not signed yet.'))},
     failed:        ${JSON.stringify(t('Не удалось загрузить документ.', 'Failed to load document.'))},
     createdLabel:  ${JSON.stringify(t('Создан: ', 'Created: '))},
@@ -267,15 +285,29 @@ export function renderDocumentView(params: {
     if (!Array.isArray(entries) || entries.length === 0) {
       return html + '<div class="card"><div class="loading">' + escape(T.notSigned) + '</div></div>';
     }
-    html += '<div class="sig-list">';
-    for (const s of entries) {
-      const cancel = s && s.type === 'cancel' ? '<span class="cancel-pill">' + escape(T.cancel) + '</span>' : '';
-      html += '<div class="sig">';
-      html += '<div class="who">' + escape(s.fullName || (s.firstName + ' ' + s.lastName)) + cancel + '</div>';
-      html += '<div class="sub">' + escape(s.company || '') + (s.taxId ? ' · ' + escape(s.taxId) : '') + '</div>';
-      html += '<div class="when">' + escape(s.signingTime || '') + (s.ip ? ' · ' + escape(s.ip) : '') + '</div>';
+    html += '<div class="sig-grid">';
+    entries.forEach((s, idx) => {
+      let state, label;
+      if (s && s.type === 'cancel') { state = 'cancel';    label = T.sigCancel; }
+      else if (idx === 0)           { state = 'sent';      label = T.sigSent; }
+      else                          { state = 'confirmed'; label = T.sigConfirmed; }
+
+      const fullName = s.fullName || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
+      const serial = s.serialDec != null ? s.serialDec : (s.serial || '');
+
+      html += '<div class="sig-card" data-state="' + state + '">';
+      html +=   '<div class="sig-header">';
+      html +=     '<span class="sig-serial">' + (serial !== '' ? '№' + escape(serial) : '') + '</span>';
+      html +=     '<span class="sig-when">' + escape(s.signingTime || '') + '</span>';
+      html +=   '</div>';
+      html +=   '<div class="sig-state">' + escape(label) + '</div>';
+      html +=   '<div class="sig-footer">';
+      html +=     '<div class="sig-name">' + escape(fullName) + '</div>';
+      if (s.operator) html += '<div class="sig-operator">' + escape(T.operator) + ': ' + escape(s.operator) + '</div>';
+      if (s.ip)       html += '<div class="sig-ip">IP: ' + escape(s.ip) + '</div>';
+      html +=   '</div>';
       html += '</div>';
-    }
+    });
     return html + '</div>';
   }
 
