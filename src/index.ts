@@ -4,6 +4,7 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { vendorRouter } from './routes/vendor';
 import { settingsRouter } from './routes/settings';
+import { didoxRouter } from './routes/didox';
 import { connectDatabase } from './services/db';
 
 const app = express();
@@ -50,7 +51,10 @@ app.get('/health', (_req, res) => {
 // MoySklad will call: ${PUBLIC_BASE_URL}/api/moysklad/vendor/1.0/apps/{appId}/{accountId}
 app.use('/api/moysklad/vendor/1.0', vendorRouter);
 
-// Iframe + settings save
+// Didox documents (mounted before /settings so the more-specific prefix wins).
+app.use('/settings/documents', didoxRouter);
+
+// Settings iframe + create/update API
 app.use('/settings', settingsRouter);
 
 // Generic error handler

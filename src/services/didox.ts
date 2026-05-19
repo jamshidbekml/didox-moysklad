@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 import {
   DidoxAuthRequest,
   DidoxAuthResponse,
+  DidoxDocumentDetail,
+  DidoxDocumentDetailResponse,
   DidoxDocumentsPage,
   DidoxListDocumentsParams,
   DidoxValidationErrorBody,
@@ -122,6 +124,27 @@ class DidoxClient {
       const body = ax.response?.data;
       logger.error({ err, status }, 'Didox: listDocuments failed');
       throw new DidoxApiError(`Didox listDocuments failed (HTTP ${status})`, status, body);
+    }
+  }
+
+  /**
+   * GET /v1/documents/{id}
+   * Returns full detail (factura JSON, party info, products, signatures, etc.)
+   * Unwraps the `{ data: ... }` envelope and returns the inner detail object.
+   */
+  async getDocument(userToken: string, docId: string): Promise<DidoxDocumentDetail> {
+    const url = `/v1/documents/${encodeURIComponent(docId)}`;
+    try {
+      const res = await this.http.get<DidoxDocumentDetailResponse>(url, {
+        headers: { 'user-key': userToken },
+      });
+      return res.data.data;
+    } catch (err) {
+      const ax = err as AxiosError;
+      const status = ax.response?.status ?? 0;
+      const body = ax.response?.data;
+      logger.error({ err, status, docId }, 'Didox: getDocument failed');
+      throw new DidoxApiError(`Didox getDocument failed (HTTP ${status})`, status, body);
     }
   }
 }

@@ -130,6 +130,158 @@ export interface DidoxDocumentsPage {
   source: string;
 }
 
+// ---- Document detail (GET /v1/documents/{id}) ------------------------------
+
+/**
+ * Common shape for seller / buyer party blocks inside a factura.
+ * Many fields are empty strings rather than null in real responses.
+ */
+export interface DidoxParty {
+  name: string;
+  branchcode: string;
+  branchname: string;
+  account: string;
+  bankid: string;
+  address: string;
+  mobile: string | null;
+  workphone: string;
+  oked: string;
+  districtid: string;
+  director: string;
+  accountant: string;
+  vatregcode: string;
+  vatregstatus: number;
+  taxgap: unknown | null;
+}
+
+export interface DidoxProduct {
+  packagecode: number | null;
+  packagename: string;
+  ordno: string;
+  committentname: string;
+  committenttin: string;
+  committentvatregcode: string;
+  committentvatregstatus: number | null;
+  name: string;
+  barcode: string;
+  lgotaid: number | null;
+  catalogcode: string;
+  catalogname: string;
+  measureid: string;
+  count: string;
+  summa: string;
+  deliverysum: number;
+  vatrate: number;
+  vatsum: string;
+  deliverysumwithvat: string;
+  withoutvat: boolean;
+  exciserate: string;
+  excisesum: string;
+  serial: string;
+  basesumma: number;
+  profitrate: number;
+  warehouseid: string | null;
+  origin: number;
+  marks: unknown | null;
+  lgotaname: string | null;
+  lgotavatsum: number;
+  lgotatype: unknown | null;
+}
+
+export interface DidoxFacturaJson {
+  version: number;
+  facturatype: string;
+  facturaid: string;
+  facturadoc: { facturano: string; facturadate: string };
+  contractdoc: { contractno: string; contractdate: string };
+  contractid: string | null;
+  facturaempowermentdoc: {
+    agentfacturaid: string;
+    empowermentno: string;
+    empowermentdateofissue: string;
+    agentfio: string;
+  };
+  itemreleaseddoc: {
+    itemreleasedfio: string;
+    itemreleasedpinfl: string;
+  };
+  sellertin: string;
+  buyertin: string;
+  seller: DidoxParty;
+  buyer: DidoxParty;
+  productlist: {
+    facturaproductid: string;
+    tin: string;
+    hasexcise: boolean;
+    hasvat: boolean;
+    hasmedical: boolean;
+    hascommittent: boolean;
+    haslgota: boolean;
+    products: DidoxProduct[];
+  };
+  hasrent: boolean;
+  facturarentdoc: unknown | null;
+}
+
+export interface DidoxDocumentMeta {
+  doc_id: string;
+  _id: string;
+  id: string;
+  name: string;
+  internal_status: string | null;
+  updated: string;
+  created: string;
+  doctype: string;
+  factura_type: number;
+  reverse_calc: boolean;
+  authorTaxId: string | null;
+  /** JSON-encoded array of signer objects. Parse on the client to display. */
+  signature: string;
+  sourceId: string | null;
+  additional: unknown[];
+  extended_json: unknown | null;
+  status_comment: string | null;
+  status: number;
+  doc_status: number;
+  owner: DidoxOwner;
+  internal_comment: string | null;
+  has_copy_restriction: boolean;
+  has_cancel_restriction: boolean | null;
+  factoringBlocks: unknown[];
+  scoring: number;
+}
+
+/** Each entry inside the JSON-encoded `signature` string on DidoxDocumentMeta. */
+export interface DidoxSignatureEntry {
+  taxId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  company: string;
+  email: string;
+  serial: string;
+  serialDec: number;
+  signingTime: string;
+  pinfl: string | null;
+  /** "cancel" appears on revocation signatures, otherwise omitted. */
+  type?: string;
+  operator: string;
+  ip: string;
+}
+
+export interface DidoxDocumentDetail {
+  json: DidoxFacturaJson;
+  document: DidoxDocumentMeta;
+  toSign: unknown | null;
+  isValid: boolean;
+  relatedDocuments: unknown[];
+  requestToByResponse: unknown | null;
+}
+
+export interface DidoxDocumentDetailResponse {
+  data: DidoxDocumentDetail;
+}
+
 // ---- Errors ----------------------------------------------------------------
 
 /**
