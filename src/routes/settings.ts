@@ -532,16 +532,19 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
   th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { background: #f6f8fa; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; }
   tr:last-child td { border-bottom: 0; }
-  /* Status indicator: filled ring with a soft halo for visibility. */
-  .status-dot {
-    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-    background: var(--neutral);
-    box-shadow: 0 0 0 2px rgba(110, 119, 129, 0.18);
-    vertical-align: middle;
+  /* Status badge: solid color from the Didox status spec, with a name label. */
+  .status-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 500; white-space: nowrap;
+    color: #fff; background: var(--neutral); border: 1px solid transparent;
   }
-  .status-dot.signed   { background: var(--green); box-shadow: 0 0 0 2px rgba(26, 127, 55, 0.22); }
-  .status-dot.rejected { background: var(--error); box-shadow: 0 0 0 2px rgba(207, 34, 46, 0.22); }
-  .status-dot.pending  { background: var(--amber); box-shadow: 0 0 0 2px rgba(191, 135, 0, 0.25); }
+  .status-badge[data-color="white"]  { background: #ffffff; color: #1f2328; border-color: #d0d7de; }
+  .status-badge[data-color="blue"]   { background: #1976d2; }
+  .status-badge[data-color="orange"] { background: #f57c00; }
+  .status-badge[data-color="green"]  { background: #1a7f37; }
+  .status-badge[data-color="black"]  { background: #1f2328; }
+  .status-badge[data-color="red"]    { background: #cf222e; }
+  .status-badge[data-color="gray"]   { background: #6e7781; }
 
   /* Pager: limit selector + numbered pages */
   .pager { display: flex; gap: 12px; align-items: center; margin-top: 12px; justify-content: space-between; flex-wrap: wrap; }
@@ -611,12 +614,46 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
   }
 
-  function statusClass(s) {
-    // 1/4 commonly = signed; -1/2 = rejected; 0 = pending/waiting. Anything else = neutral.
-    if (s === 1 || s === 4) return 'signed';
-    if (s === -1 || s === 2) return 'rejected';
-    if (s === 0 || s === 3) return 'pending';
-    return '';
+  // Document type code → human-readable name (Didox spec).
+  const DOC_TYPES = {
+    '000': 'Произвольный документ "Другое"',
+    '001': 'Счёт-фактура',
+    '002': 'Счёт-фактура без акта',
+    '005': 'Акт выполненных работ',
+    '006': 'Доверенность',
+    '007': 'Договор (НК)',
+    '008': 'Счёт-фактура (ФАРМ)',
+    '010': 'Многосторонний произвольный документ',
+    '023': 'Гибридная счёт-фактура',
+    '031': 'Письмо НК',
+    '041': 'ТТН (Товарно-транспортная накладная)',
+    '052': 'Акт сверки',
+    '054': 'Акт приёма-передачи',
+    '075': 'Протокол собрания учредителей'
+  };
+
+  // Document status code → { name, color }. Colors map to .status-badge[data-color].
+  const STATUSES = {
+    0:  { name: 'Черновик',                          color: 'white'  },
+    1:  { name: 'Ожидают подписи партнёра',          color: 'blue'   },
+    2:  { name: 'Ожидает вашей подписи',             color: 'orange' },
+    3:  { name: 'Подписан',                          color: 'green'  },
+    4:  { name: 'Отказ от подписи',                  color: 'black'  },
+    5:  { name: 'Удалён',                            color: 'red'    },
+    55: { name: 'Черновик удалён',                   color: 'red'    },
+    40: { name: 'Недействительный',                  color: 'gray'   },
+    50: { name: 'Аннулирован НК',                    color: 'gray'   },
+    60: { name: 'Ожидают подписи агента',            color: 'blue'   }
+  };
+
+  function docTypeName(code) {
+    return DOC_TYPES[code] || code || '—';
+  }
+
+  function statusBadge(code) {
+    const s = STATUSES[code];
+    if (!s) return '<span class="status-badge" data-color="gray">' + escape(code) + '</span>';
+    return '<span class="status-badge" data-color="' + s.color + '">' + escape(s.name) + '</span>';
   }
 
   function renderPager() {
@@ -682,14 +719,13 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
     html += '<th>' + ${JSON.stringify(t('Сумма без НДС', 'Net sum'))} + '</th>';
     html += '<th>' + ${JSON.stringify(t('НДС', 'VAT'))} + '</th>';
     html += '<th>' + ${JSON.stringify(t('Сумма с НДС', 'Gross sum'))} + '</th>';
-    html += '<th>Roaming ID</th>';
     html += '</tr></thead><tbody>';
 
     for (const d of docs) {
       const contract = d.contract_number ? (escape(d.contract_number) + ' / ' + escape(d.contract_date || '')) : '—';
       html += '<tr>';
-      html += '<td><span class="status-dot ' + statusClass(d.doc_status) + '"></span></td>';
-      html += '<td>' + escape(d.doctype) + '</td>';
+      html += '<td>' + statusBadge(d.doc_status) + '</td>';
+      html += '<td>' + escape(docTypeName(d.doctype)) + '</td>';
       html += '<td>' + escape(d.name) + '</td>';
       html += '<td>' + escape(d.doc_date) + '</td>';
       html += '<td>' + escape(d.partnerCompany) + '<div class="sub">' + escape(d.partnerTin) + '</div></td>';
@@ -697,7 +733,6 @@ settingsRouter.get('/documents', (req: Request, res: Response) => {
       html += '<td>' + escape(d.total_delivery_sum) + '</td>';
       html += '<td>' + escape(d.total_vat_sum) + '</td>';
       html += '<td>' + escape(d.total_delivery_sum_with_vat) + '</td>';
-      html += '<td><code>' + escape(d.roaming_id || '—') + '</code></td>';
       html += '</tr>';
     }
 
