@@ -67,25 +67,26 @@ export function renderDocumentView(params: {
   tfoot td { font-weight: 600; background: #f6f8fa; border-top: 1px solid var(--border); }
   .sub { color: var(--muted); font-size: 11px; }
 
-  /* Signature cards — receipt-style boxes with a large color-coded state label. */
-  .sig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  /* Signature cards — receipt-style boxes with a color-coded state label. */
+  .sig-grid { display: flex; flex-wrap: wrap; gap: 12px; }
   .sig-card {
     background: #fff; border: 2px solid var(--border); border-radius: 8px;
-    padding: 16px; display: flex; flex-direction: column; min-height: 180px;
+    padding: 10px 12px; display: flex; flex-direction: column;
+    width: 300px; max-width: 300px; max-height: 146px; box-sizing: border-box;
   }
   .sig-card[data-state="confirmed"] { border-color: #a1b900; }
   .sig-card[data-state="cancel"]    { border-color: var(--error); }
-  .sig-card .sig-header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+  .sig-card .sig-header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
   .sig-card .sig-state {
     flex-grow: 1; display: flex; align-items: center; justify-content: center;
-    text-align: center; padding: 24px 0;
-    font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    text-align: center; padding: 6px 0;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--muted);
   }
   .sig-card[data-state="confirmed"] .sig-state { color: #a1b900; }
   .sig-card[data-state="cancel"]    .sig-state { color: var(--error); }
-  .sig-card .sig-footer { font-size: 12px; line-height: 1.5; }
-  .sig-card .sig-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; color: var(--fg); }
+  .sig-card .sig-footer { font-size: 11px; line-height: 1.35; }
+  .sig-card .sig-name { font-weight: 600; font-size: 12px; margin-bottom: 2px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sig-card .sig-operator, .sig-card .sig-ip { color: var(--muted); }
 
   .loading, .error { padding: 24px; text-align: center; color: var(--muted); }
