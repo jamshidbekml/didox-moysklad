@@ -68,7 +68,7 @@ export function renderDocumentView(params: {
   .sub { color: var(--muted); font-size: 11px; }
 
   /* Signature cards — receipt-style boxes with a color-coded state label. */
-  .sig-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+  .sig-grid { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
   .sig-card {
     background: #fff; border: 2px solid var(--border); border-radius: 8px;
     padding: 10px 12px; display: flex; flex-direction: column;
