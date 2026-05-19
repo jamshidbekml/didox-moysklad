@@ -143,7 +143,7 @@ vendorRouter.delete(
  * POST /api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
  * Called by MoySklad when the user clicks a button registered in our descriptor.
  *
- * Currently handles only `importFromDidox`. The actual import (Didox fetch +
+ * Currently handles only `import-from-didox`. The actual import (Didox fetch +
  * matching + draft Supply creation) runs in the background — we respond
  * immediately with an `async` marker and call `/button/complete` when done.
  *
@@ -163,7 +163,7 @@ vendorRouter.post(
       'Button click received'
     );
 
-    if (buttonName !== 'importFromDidox') {
+    if (buttonName !== 'import-from-didox') {
       res.status(400).json({ error: 'unknown_button', buttonName });
       return;
     }

@@ -32,7 +32,7 @@
     useSelected="false" — the button doesn't depend on which rows are selected.
   -->
   <buttons>
-    <button name="importFromDidox" title="Импорт счетов из Didox" useSelected="false">
+    <button name="import-from-didox" title="Импорт счетов из Didox" useSelected="false">
       <locations>
         <document.supply.list/>
       </locations>
