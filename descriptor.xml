@@ -24,6 +24,21 @@
     </iframe>
   </iframes>
 
+  <!--
+    Adds an "Импорт счетов из Didox" button to the Приёмки list page.
+    Clicking it POSTs to {endpointBase}/api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
+    with { "buttonName": "importFromDidox", ... }.
+
+    useSelected="false" — the button doesn't depend on which rows are selected.
+  -->
+  <buttons>
+    <button name="importFromDidox" title="Импорт счетов из Didox" useSelected="false">
+      <locations>
+        <document.supply.list/>
+      </locations>
+    </button>
+  </buttons>
+
   <vendorApi>
     <endpointBase>https://test-domain.uzpos.uz</endpointBase>
   </vendorApi>

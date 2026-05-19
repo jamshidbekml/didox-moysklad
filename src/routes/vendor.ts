@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { captureRequestId, requireVendorJwt } from '../middleware/auth';
+import { runImport } from '../import/pipeline';
+import { completeJob, createJob, failJob } from '../import/jobs';
+import { vendorApi } from '../services/moysklad';
 import { installationStore } from '../services/store';
 import { logger } from '../utils/logger';
 import {
@@ -133,6 +136,79 @@ vendorRouter.delete(
 
     await installationStore.markDeactivated(accountId);
     res.status(200).end();
+  }
+);
+
+/**
+ * POST /api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
+ * Called by MoySklad when the user clicks a button registered in our descriptor.
+ *
+ * Currently handles only `importFromDidox`. The actual import (Didox fetch +
+ * matching + draft Supply creation) runs in the background — we respond
+ * immediately with an `async` marker and call `/button/complete` when done.
+ *
+ * Spec: vendor API "Кастомные кнопки" + "Асинхронные действия".
+ */
+vendorRouter.post(
+  '/apps/:appId/:accountId/button',
+  async (req: Request, res: Response) => {
+    const { accountId } = req.params;
+    const { buttonName, extensionPoint } = req.body as {
+      buttonName?: string;
+      extensionPoint?: string;
+    };
+
+    logger.info(
+      { accountId, buttonName, extensionPoint, requestId: req.requestId },
+      'Button click received'
+    );
+
+    if (buttonName !== 'importFromDidox') {
+      res.status(400).json({ error: 'unknown_button', buttonName });
+      return;
+    }
+
+    const job = createJob(accountId);
+
+    // Fire-and-forget. Errors are captured into the job state and surfaced
+    // via /button/complete; we never want the background work to bring
+    // down the process.
+    runImport(accountId)
+      .then(async (summary) => {
+        completeJob(job.id, summary);
+        await vendorApi
+          .completeAsyncAction(job.id, {
+            text:
+              `Импортировано ${summary.imported} счетов из Didox` +
+              ` (пропущено ${summary.skipped}, ошибок ${summary.failed})`,
+            url: 'https://online.moysklad.ru/app/#supply',
+            urlText: 'Открыть Приёмки',
+          })
+          .catch((err) =>
+            logger.error({ err, jobId: job.id }, 'completeAsyncAction failed (success path)')
+          );
+      })
+      .catch(async (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        failJob(job.id, message);
+        logger.error({ err, jobId: job.id, accountId }, 'Import job failed');
+        await vendorApi
+          .completeAsyncAction(job.id, {
+            text: `Не удалось импортировать из Didox: ${message}`,
+          })
+          .catch((nestedErr) =>
+            logger.error({ err: nestedErr, jobId: job.id }, 'completeAsyncAction failed (error path)')
+          );
+      });
+
+    res.json({
+      action: 'showNotification',
+      async: true,
+      params: {
+        text: 'Идёт импорт из Didox. Уведомление придёт по завершении.',
+        asyncProcessId: job.id,
+      },
+    });
   }
 );
 

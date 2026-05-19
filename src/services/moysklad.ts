@@ -67,34 +67,28 @@ class VendorApiClient {
     const res = await this.http.post(url);
     return res.data;
   }
-}
 
-/**
- * Client for calling JSON API 1.2 with the per-account access_token granted
- * during activation. Build a new client per request — tokens are per-account.
- */
-export class JsonApiClient {
-  private readonly http: AxiosInstance;
-
-  constructor(accessToken: string) {
-    this.http = axios.create({
-      baseURL: config.moysklad.jsonApiBase,
-      timeout: 30_000,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Accept-Encoding': 'gzip',
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-    });
+  /**
+   * POST /apps/{appId}/button/complete
+   * Completes an async button action started by our POST /button handler.
+   * MoySklad displays the notification to the user and dismisses the
+   * "in progress" toast.
+   *
+   * Spec: vendor API "Асинхронные действия".
+   */
+  async completeAsyncAction(
+    asyncProcessId: string,
+    notification: { text: string; url?: string; urlText?: string }
+  ): Promise<void> {
+    const url = `/apps/${config.moysklad.appId}/button/complete`;
+    try {
+      await this.http.post(url, { asyncProcessId, notification });
+      logger.info({ asyncProcessId }, 'Vendor API: async action completed');
+    } catch (err) {
+      logger.error({ err, asyncProcessId, url }, 'Vendor API: failed to complete async action');
+      throw err;
+    }
   }
-
-  async getCurrentEmployee(): Promise<unknown> {
-    const res = await this.http.get('/context/employee');
-    return res.data;
-  }
-
-  // Add more JSON API helpers as you need them (organization, counterparty, demand, etc.)
 }
 
 export const vendorApi = new VendorApiClient();
