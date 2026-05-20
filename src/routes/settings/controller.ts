@@ -46,6 +46,27 @@ export async function getBootstrap(req: Request, res: Response): Promise<void> {
   if (!resolved) return;
 
   const install = await installationStore.get(resolved.accountId);
+
+  // If MoySklad activation set status=SettingsRequired and the user has since
+  // saved settings, flip the vendor status to Activated. Fire-and-forget so
+  // bootstrap latency isn't tied to the vendor round-trip; the next iframe
+  // load will retry if this attempt fails.
+  if (install?.settings?.configured && install.status === 'SettingsRequired') {
+    const snapshot = install;
+    void (async () => {
+      try {
+        await vendorApi.updateStatus(snapshot.accountId, 'Activated');
+        await installationStore.upsert({
+          ...snapshot,
+          status: 'Activated',
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.error({ err, accountId: snapshot.accountId }, 'Failed to transition to Activated');
+      }
+    })();
+  }
+
   // Never send the decrypted Didox password to the browser.
   const { didoxPassword: _omit, ...safeSettings } = install?.settings ?? {};
   void _omit;
@@ -115,22 +136,6 @@ export async function postCreate(req: Request, res: Response): Promise<void> {
   };
 
   await installationStore.upsert({ ...baseInstall, settings });
-
-  // If MoySklad activation set status=SettingsRequired, flip to Activated now.
-  if (existing?.status === 'SettingsRequired') {
-    try {
-      await vendorApi.updateStatus(accountId, 'Activated');
-      await installationStore.upsert({
-        ...baseInstall,
-        status: 'Activated',
-        settings,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      logger.error({ err, accountId }, 'Failed to transition to Activated');
-      // Settings are already saved locally; not fatal for the user.
-    }
-  }
 
   // First-time success: tell the client to navigate to the documents page.
   res.status(201).json({
