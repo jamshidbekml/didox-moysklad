@@ -131,3 +131,33 @@ export interface SupplyPosition {
   vat?: number;
   discount?: number;
 }
+
+/**
+ * InvoiceIn — Счёт поставщика. The "supplier bill" doc we create from a
+ * Didox incoming factura. Unlike Supply, it does not touch stock; an
+ * actual receipt would be a separate Supply created from this InvoiceIn.
+ */
+export interface InvoiceIn {
+  meta: Meta;
+  id: string;
+  name?: string;
+  moment?: string;
+  vatEnabled?: boolean;
+  vatIncluded?: boolean;
+  /** Supplier's external invoice number / date (Didox doc fields). */
+  incomingNumber?: string;
+  incomingDate?: string;
+  organization?: MetaRef;
+  agent?: MetaRef;
+  positions?: { meta: Meta } | InvoiceInPosition[];
+  attributes?: AttributeValue[];
+}
+
+export interface InvoiceInPosition {
+  assortment: MetaRef;
+  quantity: number;
+  /** MoySklad expects price in the smallest currency unit (kopeks / tiyins). */
+  price: number;
+  vat?: number;
+  discount?: number;
+}

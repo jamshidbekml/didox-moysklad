@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { didoxApi, DidoxApiError } from '../../services/didox';
-import { logger } from '../../utils/logger';
-import { resolveDidoxSession } from './session';
+import { didoxApi } from '../../services/didox';
+import { withDidoxToken } from '../../services/didox-auth';
+import { resolveDidoxSession, sendDidoxError } from './session';
 import { renderDocumentsList } from './templates/list';
 import { renderDocumentView } from './templates/view';
 
@@ -55,12 +55,12 @@ export async function getDocumentsJson(req: Request, res: Response): Promise<voi
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? '20'), 10) || 20));
 
   try {
-    const data = await didoxApi.listDocuments(session.userToken, { owner, page, limit });
+    const data = await withDidoxToken(session.accountId, (token) =>
+      didoxApi.listDocuments(token, { owner, page, limit })
+    );
     res.json(data);
   } catch (err) {
-    const status = err instanceof DidoxApiError ? err.status || 502 : 502;
-    logger.error({ err, accountId: session.accountId }, 'Didox listDocuments failed');
-    res.status(502).json({ error: 'didox_upstream_error', upstreamStatus: status });
+    sendDidoxError(res, session.accountId, err);
   }
 }
 
@@ -79,11 +79,11 @@ export async function getDocumentDetails(req: Request, res: Response): Promise<v
   if (!session) return;
 
   try {
-    const detail = await didoxApi.getDocument(session.userToken, docId);
+    const detail = await withDidoxToken(session.accountId, (token) =>
+      didoxApi.getDocument(token, docId)
+    );
     res.json(detail);
   } catch (err) {
-    const status = err instanceof DidoxApiError ? err.status || 502 : 502;
-    logger.error({ err, accountId: session.accountId, docId }, 'Didox getDocument failed');
-    res.status(502).json({ error: 'didox_upstream_error', upstreamStatus: status });
+    sendDidoxError(res, session.accountId, err, { docId });
   }
 }

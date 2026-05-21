@@ -25,16 +25,27 @@
   </iframes>
 
   <!--
-    Adds an "Импорт счетов из Didox" button to the Приёмки list page.
-    Clicking it POSTs to {endpointBase}/api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
-    with { "buttonName": "importFromDidox", ... }.
+    Buttons (flow.md §4):
+      - "Импорт из Didox" on the Счета поставщиков list (Didox → MoySklad).
+        Inbound path; creates `invoicein` documents from incoming facturas.
+      - "Отправить в Didox" on the Счета покупателям list (MoySklad → Didox).
+        Outbound path; selected invoiceouts are converted and posted to Didox.
 
-    useSelected="false" — the button doesn't depend on which rows are selected.
+    Both POST to {endpointBase}/api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
+    with { "buttonName": <name>, ... }.
+
+    useSelected="true" on send-to-didox so MoySklad passes the selected row ids
+    in the click payload — required by §6.1 (user picks one or more invoices).
   -->
   <buttons>
-    <button name="import-from-didox" title="Импорт счетов из Didox" useSelected="false">
+    <button name="import-from-didox" title="Импорт из Didox" useSelected="false">
       <locations>
-        <document.supply.list/>
+        <document.invoicein.list/>
+      </locations>
+    </button>
+    <button name="send-to-didox" title="Отправить в Didox" useSelected="true">
+      <locations>
+        <document.invoiceout.list/>
       </locations>
     </button>
   </buttons>
@@ -57,15 +68,29 @@
         <view/>
       </good>
 
-      <!-- The documents we typically send to Didox -->
+      <!-- The documents on the read/write paths to/from Didox. -->
       <demand>
         <view/>
       </demand>
       <supply>
         <view/>
       </supply>
+      <!--
+        Inbound (flow.md §5): we create Счёт поставщика from each Didox
+        incoming factura. Need view (idempotency lookup) + create.
+      -->
+      <invoiceIn>
+        <view/>
+        <create/>
+      </invoiceIn>
+      <!--
+        Outbound (flow.md §6): we read the user-selected invoices, send them
+        to Didox, then stamp the source doc with the Didox id/status. Need
+        view + update.
+      -->
       <invoiceOut>
         <view/>
+        <update/>
       </invoiceOut>
 
       <!-- Read own organization (for seller-side INN/OKED) -->

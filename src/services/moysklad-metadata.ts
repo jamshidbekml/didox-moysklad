@@ -12,9 +12,9 @@ export interface AccountMetadata {
     productDidoxImported: AttributeMeta;
     productDidoxIkpu: AttributeMeta;
     counterpartyDidoxUnverified: AttributeMeta;
-    supplyDidoxInvoiceId: AttributeMeta;
-    supplyDidoxStatus: AttributeMeta;
-    supplyDidoxError: AttributeMeta;
+    invoiceInDidoxInvoiceId: AttributeMeta;
+    invoiceInDidoxStatus: AttributeMeta;
+    invoiceInDidoxError: AttributeMeta;
   };
 }
 
@@ -28,10 +28,10 @@ const SPEC = {
   counterparty: [
     { key: 'counterpartyDidoxUnverified', name: 'didoxUnverified', type: 'boolean' as AttributeType },
   ],
-  supply: [
-    { key: 'supplyDidoxInvoiceId', name: 'didoxInvoiceId', type: 'string' as AttributeType },
-    { key: 'supplyDidoxStatus',    name: 'didoxStatus',    type: 'string' as AttributeType },
-    { key: 'supplyDidoxError',     name: 'didoxError',     type: 'string' as AttributeType },
+  invoicein: [
+    { key: 'invoiceInDidoxInvoiceId', name: 'didoxInvoiceId', type: 'string' as AttributeType },
+    { key: 'invoiceInDidoxStatus',    name: 'didoxStatus',    type: 'string' as AttributeType },
+    { key: 'invoiceInDidoxError',     name: 'didoxError',     type: 'string' as AttributeType },
   ],
 } as const;
 
@@ -63,7 +63,7 @@ export async function ensureAccountMetadata(
   const productFolder = await ensureProductFolder(entities);
   const productAttrs = await ensureAttributes(entities, 'product', SPEC.product);
   const counterpartyAttrs = await ensureAttributes(entities, 'counterparty', SPEC.counterparty);
-  const supplyAttrs = await ensureAttributes(entities, 'supply', SPEC.supply);
+  const invoiceInAttrs = await ensureAttributes(entities, 'invoicein', SPEC.invoicein);
 
   const resolved: AccountMetadata = {
     productFolder,
@@ -71,9 +71,9 @@ export async function ensureAccountMetadata(
       productDidoxImported:        productAttrs.productDidoxImported,
       productDidoxIkpu:            productAttrs.productDidoxIkpu,
       counterpartyDidoxUnverified: counterpartyAttrs.counterpartyDidoxUnverified,
-      supplyDidoxInvoiceId:        supplyAttrs.supplyDidoxInvoiceId,
-      supplyDidoxStatus:           supplyAttrs.supplyDidoxStatus,
-      supplyDidoxError:            supplyAttrs.supplyDidoxError,
+      invoiceInDidoxInvoiceId:     invoiceInAttrs.invoiceInDidoxInvoiceId,
+      invoiceInDidoxStatus:        invoiceInAttrs.invoiceInDidoxStatus,
+      invoiceInDidoxError:         invoiceInAttrs.invoiceInDidoxError,
     },
   };
 
@@ -95,7 +95,7 @@ async function ensureProductFolder(entities: MoyskladEntities): Promise<ProductF
 
 async function ensureAttributes<K extends string>(
   entities: MoyskladEntities,
-  entityType: 'product' | 'counterparty' | 'supply',
+  entityType: 'product' | 'counterparty' | 'supply' | 'invoicein',
   spec: ReadonlyArray<{ key: K; name: string; type: AttributeType }>
 ): Promise<Record<K, AttributeMeta>> {
   const existing = await entities.listAttributeMetadata(entityType);

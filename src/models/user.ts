@@ -31,6 +31,8 @@ const settingsSchema = new Schema(
     didoxPassword: encryptedFieldSchema, // ENCRYPTED at rest
     autoSendDemand: { type: Boolean, default: false },
     configured: { type: Boolean, default: false },
+    didoxToken: encryptedFieldSchema, // ENCRYPTED at rest, ~6h TTL
+    didoxTokenExpiresAt: Date,
   },
   { _id: false }
 );

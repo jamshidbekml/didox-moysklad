@@ -30,6 +30,8 @@ interface StoredSettings {
   didoxPassword?: EncryptedField | null;
   autoSendDemand?: boolean | null;
   configured?: boolean | null;
+  didoxToken?: EncryptedField | null;
+  didoxTokenExpiresAt?: Date | null;
 }
 
 interface StoredUser {
@@ -63,6 +65,8 @@ function toSettings(s: StoredSettings | null | undefined): AccountSettings | und
     autoSendDemand: s.autoSendDemand ?? undefined,
     configured: s.configured ?? undefined,
     didoxPassword: isEncryptedField(s.didoxPassword) ? decrypt(s.didoxPassword) : undefined,
+    didoxToken: isEncryptedField(s.didoxToken) ? decrypt(s.didoxToken) : undefined,
+    didoxTokenExpiresAt: s.didoxTokenExpiresAt ? s.didoxTokenExpiresAt.toISOString() : undefined,
   };
 }
 
@@ -99,10 +103,16 @@ export class InstallationStore {
     }
 
     if (install.settings) {
-      const { didoxPassword, ...rest } = install.settings;
+      const { didoxPassword, didoxToken, didoxTokenExpiresAt, ...rest } = install.settings;
       const settingsToStore: Record<string, unknown> = { ...rest };
       if (didoxPassword !== undefined) {
         settingsToStore.didoxPassword = encrypt(didoxPassword);
+      }
+      if (didoxToken !== undefined) {
+        settingsToStore.didoxToken = encrypt(didoxToken);
+      }
+      if (didoxTokenExpiresAt !== undefined) {
+        settingsToStore.didoxTokenExpiresAt = new Date(didoxTokenExpiresAt);
       }
       set.settings = settingsToStore;
     }
@@ -153,6 +163,18 @@ export class InstallationStore {
         }
         continue;
       }
+      if (key === 'didoxToken') {
+        if (typeof value === 'string') {
+          set['settings.didoxToken'] = encrypt(value);
+        }
+        continue;
+      }
+      if (key === 'didoxTokenExpiresAt') {
+        if (typeof value === 'string') {
+          set['settings.didoxTokenExpiresAt'] = new Date(value);
+        }
+        continue;
+      }
       set[`settings.${key}`] = value;
     }
 
@@ -167,6 +189,17 @@ export class InstallationStore {
       { new: true }
     ).lean<StoredUser | null>();
     return doc ? toInstallation(doc) : undefined;
+  }
+
+  /**
+   * Drop the cached Didox token. Used when the upstream API rejects the
+   * cached token (e.g. revoked early); the next call will mint a fresh one.
+   */
+  async clearDidoxToken(accountId: string): Promise<void> {
+    await UserModel.updateOne(
+      { accountId },
+      { $unset: { 'settings.didoxToken': '', 'settings.didoxTokenExpiresAt': '' } }
+    );
   }
 
   async list(): Promise<AccountInstallation[]> {

@@ -5,6 +5,7 @@ import {
   AttributeMeta,
   AttributeType,
   Counterparty,
+  InvoiceIn,
   ListResponse,
   Organization,
   Product,
@@ -115,22 +116,29 @@ export class MoyskladEntities {
 
   // ---- Supply (Приёмка) --------------------------------------------------
 
+  async createSupply(payload: Partial<Supply>): Promise<Supply> {
+    return this.post<Supply>('/entity/supply', payload);
+  }
+
+  // ---- InvoiceIn (Счёт поставщика) ---------------------------------------
+
   /**
-   * Check whether a Supply already carries the given Didox invoice id on
-   * its custom-attribute `didoxInvoiceId`. Used for idempotency.
+   * Check whether an InvoiceIn already carries the given Didox invoice id on
+   * its custom-attribute `didoxInvoiceId`. Used for idempotency on the
+   * Didox → MoySklad import path (flow.md §5.4).
    *
    * `attrMetaId` is the UUID of the attribute definition (from /metadata).
    */
-  async findSupplyByDidoxInvoiceId(attrMetaId: string, didoxInvoiceId: string): Promise<Supply | null> {
-    const data = await this.get<ListResponse<Supply>>('/entity/supply', {
+  async findInvoiceInByDidoxInvoiceId(attrMetaId: string, didoxInvoiceId: string): Promise<InvoiceIn | null> {
+    const data = await this.get<ListResponse<InvoiceIn>>('/entity/invoicein', {
       filter: `${attrMetaId}=${didoxInvoiceId}`,
       limit: 1,
     });
     return data.rows[0] ?? null;
   }
 
-  async createSupply(payload: Partial<Supply>): Promise<Supply> {
-    return this.post<Supply>('/entity/supply', payload);
+  async createInvoiceIn(payload: Partial<InvoiceIn>): Promise<InvoiceIn> {
+    return this.post<InvoiceIn>('/entity/invoicein', payload);
   }
 
   // ---- Custom attribute metadata -----------------------------------------
@@ -140,7 +148,9 @@ export class MoyskladEntities {
    * E.g. listAttributeMetadata('product') returns all custom attributes
    * defined on products for this account.
    */
-  async listAttributeMetadata(entityType: 'product' | 'counterparty' | 'supply'): Promise<AttributeMeta[]> {
+  async listAttributeMetadata(
+    entityType: 'product' | 'counterparty' | 'supply' | 'invoicein'
+  ): Promise<AttributeMeta[]> {
     const data = await this.get<ListResponse<AttributeMeta>>(
       `/entity/${entityType}/metadata/attributes`
     );
@@ -149,7 +159,7 @@ export class MoyskladEntities {
 
   /** Create a custom attribute definition on the given entity type. */
   async createAttributeMetadata(
-    entityType: 'product' | 'counterparty' | 'supply',
+    entityType: 'product' | 'counterparty' | 'supply' | 'invoicein',
     name: string,
     type: AttributeType
   ): Promise<AttributeMeta> {

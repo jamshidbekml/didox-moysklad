@@ -84,4 +84,9 @@ export interface AccountSettings {
   didoxPassword?: string; // plaintext password — decrypted in memory only, encrypted at rest
   autoSendDemand?: boolean;
   configured?: boolean;
+  // Cached Didox user-token. Tokens are valid ~6h; we mint one on demand and
+  // reuse it until didoxTokenExpiresAt (minus a small safety buffer) elapses.
+  // Encrypted at rest, same scheme as didoxPassword.
+  didoxToken?: string;
+  didoxTokenExpiresAt?: string; // ISO date
 }

@@ -143,9 +143,11 @@ vendorRouter.delete(
  * POST /api/moysklad/vendor/1.0/apps/{appId}/{accountId}/button
  * Called by MoySklad when the user clicks a button registered in our descriptor.
  *
- * Currently handles only `import-from-didox`. The actual import (Didox fetch +
- * matching + draft Supply creation) runs in the background — we respond
- * immediately with an `async` marker and call `/button/complete` when done.
+ * Handles:
+ *   - import-from-didox  → Didox → MoySklad (Счёт поставщика). Async.
+ *   - send-to-didox      → MoySklad → Didox (Счёт покупателю). Stub for now;
+ *                          returns a "not yet implemented" notification so the
+ *                          UI surface is wired ahead of the export pipeline.
  *
  * Spec: vendor API "Кастомные кнопки" + "Асинхронные действия".
  */
@@ -163,54 +165,70 @@ vendorRouter.post(
       'Button click received'
     );
 
-    if (buttonName !== 'import-from-didox') {
-      res.status(400).json({ error: 'unknown_button', buttonName });
+    if (buttonName === 'import-from-didox') {
+      handleImportFromDidox(accountId, res);
       return;
     }
 
-    const job = createJob(accountId);
-
-    // Fire-and-forget. Errors are captured into the job state and surfaced
-    // via /button/complete; we never want the background work to bring
-    // down the process.
-    runImport(accountId)
-      .then(async (summary) => {
-        completeJob(job.id, summary);
-        await vendorApi
-          .completeAsyncAction(job.id, {
-            text:
-              `Импортировано ${summary.imported} счетов из Didox` +
-              ` (пропущено ${summary.skipped}, ошибок ${summary.failed})`,
-            url: 'https://online.moysklad.ru/app/#supply',
-            urlText: 'Открыть Приёмки',
-          })
-          .catch((err) =>
-            logger.error({ err, jobId: job.id }, 'completeAsyncAction failed (success path)')
-          );
-      })
-      .catch(async (err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        failJob(job.id, message);
-        logger.error({ err, jobId: job.id, accountId }, 'Import job failed');
-        await vendorApi
-          .completeAsyncAction(job.id, {
-            text: `Не удалось импортировать из Didox: ${message}`,
-          })
-          .catch((nestedErr) =>
-            logger.error({ err: nestedErr, jobId: job.id }, 'completeAsyncAction failed (error path)')
-          );
+    if (buttonName === 'send-to-didox') {
+      // Synchronous "not implemented yet" notification. When the export
+      // pipeline lands, swap this for an async-job handler mirroring import.
+      res.json({
+        action: 'showNotification',
+        params: {
+          text: 'Отправка в Didox пока не реализована. Скоро будет доступна.',
+        },
       });
+      return;
+    }
 
-    res.json({
-      action: 'showNotification',
-      async: true,
-      params: {
-        text: 'Идёт импорт из Didox. Уведомление придёт по завершении.',
-        asyncProcessId: job.id,
-      },
-    });
+    res.status(400).json({ error: 'unknown_button', buttonName });
   }
 );
+
+function handleImportFromDidox(accountId: string, res: Response): void {
+  const job = createJob(accountId);
+
+  // Fire-and-forget. Errors are captured into the job state and surfaced
+  // via /button/complete; we never want the background work to bring
+  // down the process.
+  runImport(accountId)
+    .then(async (summary) => {
+      completeJob(job.id, summary);
+      await vendorApi
+        .completeAsyncAction(job.id, {
+          text:
+            `Импортировано ${summary.imported} счетов из Didox` +
+            ` (пропущено ${summary.skipped}, ошибок ${summary.failed})`,
+          url: 'https://online.moysklad.ru/app/#invoicein',
+          urlText: 'Открыть Счета поставщиков',
+        })
+        .catch((err) =>
+          logger.error({ err, jobId: job.id }, 'completeAsyncAction failed (success path)')
+        );
+    })
+    .catch(async (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      failJob(job.id, message);
+      logger.error({ err, jobId: job.id, accountId }, 'Import job failed');
+      await vendorApi
+        .completeAsyncAction(job.id, {
+          text: `Не удалось импортировать из Didox: ${message}`,
+        })
+        .catch((nestedErr) =>
+          logger.error({ err: nestedErr, jobId: job.id }, 'completeAsyncAction failed (error path)')
+        );
+    });
+
+  res.json({
+    action: 'showNotification',
+    async: true,
+    params: {
+      text: 'Идёт импорт из Didox. Уведомление придёт по завершении.',
+      asyncProcessId: job.id,
+    },
+  });
+}
 
 /**
  * Optional: GET /api/moysklad/vendor/1.0/apps/{appId}/{accountId}
